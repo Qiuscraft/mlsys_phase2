@@ -49,7 +49,18 @@ python -m mlsys_phase2.mcp_server
 
 ## 自动优化 Agent
 
-配置 OpenAI 兼容 API：
+配置 OpenAI 兼容 API。Agent 启动时会自动读取项目根目录 `.env`，且已通过 shell/export 设置的环境变量优先于 `.env`：
+
+```bash
+# .env
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=...        # 可选
+OPENAI_MODEL=gpt-4o        # 默认 gpt-4o
+OPENAI_TEMPERATURE=0.2     # 默认 0.2
+MAX_OPT_ITERS=10           # --max-opt-iters 未传入时生效
+```
+
+也可以继续直接通过 shell 配置：
 
 ```bash
 export OPENAI_API_KEY=...

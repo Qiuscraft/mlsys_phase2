@@ -6,6 +6,7 @@ dependencies = [
     "torch==2.3.0",
     "mcp[cli]",
     "openai",
+    "python-dotenv",
 ]
 
 [[tool.uv.index]]

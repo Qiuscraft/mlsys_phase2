@@ -12,6 +12,16 @@ from .prompts import INITIAL_USER_PROMPT, SYSTEM_PROMPT, optimize_prompt, repair
 from .utils import dumps_result, project_root, strip_markdown_code_fence
 
 
+def load_env() -> None:
+    """Load project-level .env for the agent without overriding exported variables."""
+    try:
+        from dotenv import load_dotenv
+    except Exception as exc:  # pragma: no cover - depends on installed package
+        raise RuntimeError("需要安装 python-dotenv 包才能从 .env 读取环境变量。") from exc
+
+    load_dotenv(project_root() / ".env", override=False)
+
+
 def _openai_client():
     try:
         from openai import OpenAI
@@ -58,6 +68,8 @@ def run_agent(
     iters: int = 50,
     profile_iters: int = 8,
 ) -> int:
+    load_env()
+
     out = Path(output_path).expanduser().resolve() if output_path else project_root() / "optimized.cu"
     opt_iters = max_opt_iters if max_opt_iters is not None else int(os.getenv("MAX_OPT_ITERS", "10"))
 
