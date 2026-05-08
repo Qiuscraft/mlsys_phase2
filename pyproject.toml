@@ -1,0 +1,13 @@
+[project]
+name = "mlsys-phase2"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "mcp[cli]",
+    "openai",
+]
+
+[project.scripts]
+mlsys-mcp = "mlsys_phase2.mcp_server:main"
+mlsys-agent = "mlsys_phase2.agent:main"
