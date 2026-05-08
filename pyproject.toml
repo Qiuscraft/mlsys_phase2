@@ -11,3 +11,7 @@ dependencies = [
 [project.scripts]
 mlsys-mcp = "mlsys_phase2.mcp_server:main"
 mlsys-agent = "mlsys_phase2.agent:main"
+
+[[tool.uv.index]]
+name = "volces"
+url = "https://mirrors.volces.com/pypi/simple/"
