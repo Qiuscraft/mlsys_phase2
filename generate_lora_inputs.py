@@ -1,10 +1,15 @@
-from pathlib import Path
 import argparse
+import logging
+from pathlib import Path
+
 import torch
+
+from mlsys_phase2.logging_utils import setup_logging
 
 
 D_VALUES = (3584, 3840, 4096, 4352, 4608)
 RANK = 16
+logger = logging.getLogger(__name__)
 
 
 def generate_inputs(output_root: Path, seed: int, scale: float, overwrite: bool) -> None:
@@ -24,10 +29,10 @@ def generate_inputs(output_root: Path, seed: int, scale: float, overwrite: bool)
       }
 
       if not overwrite and all(p.exists() for p in paths.values()):
-          print(f"[skip] d={d}: all files already exist in {out_dir}")
+          logger.info("[skip] d=%s: all files already exist in %s", d, out_dir)
           continue
 
-      print(f"[generate] d={d} -> {out_dir}", flush=True)
+      logger.info("[generate] d=%s -> %s", d, out_dir)
 
       # 生成 CPU float32 contiguous tensor。
       # 使用较小 scale，避免 W @ X 数值过大，同时保持 benchmark 形状真实。
@@ -43,12 +48,13 @@ def generate_inputs(output_root: Path, seed: int, scale: float, overwrite: bool)
 
       del W, X, A, B
 
-      print(f"[done] d={d}", flush=True)
+      logger.info("[done] d=%s", d)
 
-  print(f"All inputs generated under: {output_root.resolve()}")
+  logger.info("All inputs generated under: %s", output_root.resolve())
 
 
 def main() -> None:
+  setup_logging(log_to_file=False)
   parser = argparse.ArgumentParser()
   parser.add_argument(
       "--output-root",

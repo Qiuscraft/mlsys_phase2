@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 from .bench import benchmark_lora_code
+from .logging_utils import setup_logging
 from .profile import profile_lora_code
 from .prompts import INITIAL_USER_PROMPT, SYSTEM_PROMPT, optimize_prompt, repair_prompt
 from .utils import dumps_result, project_root, strip_markdown_code_fence
+
+
+logger = logging.getLogger(__name__)
 
 
 def load_env() -> None:
@@ -68,53 +72,55 @@ def run_agent(
     iters: int = 50,
     profile_iters: int = 8,
 ) -> int:
+    log_path = setup_logging(log_to_file=True)
+    logger.info("日志文件: %s", log_path)
     load_env()
 
     out = Path(output_path).expanduser().resolve() if output_path else project_root() / "optimized.cu"
     opt_iters = max_opt_iters if max_opt_iters is not None else int(os.getenv("MAX_OPT_ITERS", "10"))
 
-    print("生成初始 CUDA 代码...", flush=True)
+    logger.info("生成初始 CUDA 代码...")
     code = call_llm(INITIAL_USER_PROMPT)
     best_result: dict[str, Any] | None = None
     best_speedup = 0.0
 
     for attempt in range(1, max_init_attempts + 1):
-        print(f"初始正确性/性能检查 attempt={attempt}/{max_init_attempts}", flush=True)
+        logger.info("初始正确性/性能检查 attempt=%s/%s", attempt, max_init_attempts)
         result = benchmark_lora_code(code, inputs_root=inputs_root, warmup=warmup, iters=iters)
-        print(dumps_result(result), flush=True)
+        logger.info("%s", dumps_result(result))
         if result.get("ok"):
             best_result = result
             best_speedup = float(result.get("average_speedup") or 0.0)
             write_best(out, code)
-            print(f"初始代码已采纳: {out}, average_speedup={best_speedup:.6f}", flush=True)
+            logger.info("初始代码已采纳: %s, average_speedup=%.6f", out, best_speedup)
             break
         code = call_llm(repair_prompt(code, dumps_result(result)))
 
     if best_result is None:
-        print("无法生成通过正确性检查的初始代码。", file=sys.stderr, flush=True)
+        logger.error("无法生成通过正确性检查的初始代码。")
         return 1
 
     for step in range(1, opt_iters + 1):
-        print(f"优化迭代 {step}/{opt_iters}: ncu profile", flush=True)
+        logger.info("优化迭代 %s/%s: ncu profile", step, opt_iters)
         profile_result = profile_lora_code(code, inputs_root=inputs_root, iters=profile_iters)
-        print(dumps_result(profile_result), flush=True)
+        logger.info("%s", dumps_result(profile_result))
 
-        print(f"优化迭代 {step}/{opt_iters}: 生成候选代码", flush=True)
+        logger.info("优化迭代 %s/%s: 生成候选代码", step, opt_iters)
         candidate = call_llm(optimize_prompt(code, dumps_result(best_result), dumps_result(profile_result), best_speedup))
-        print(f"优化迭代 {step}/{opt_iters}: benchmark 候选代码", flush=True)
+        logger.info("优化迭代 %s/%s: benchmark 候选代码", step, opt_iters)
         result = benchmark_lora_code(candidate, inputs_root=inputs_root, warmup=warmup, iters=iters)
-        print(dumps_result(result), flush=True)
+        logger.info("%s", dumps_result(result))
 
         if candidate_is_better(result, best_speedup):
             code = candidate
             best_result = result
             best_speedup = float(result.get("average_speedup") or 0.0)
             write_best(out, code)
-            print(f"采纳新代码: average_speedup={best_speedup:.6f}", flush=True)
+            logger.info("采纳新代码: average_speedup=%.6f", best_speedup)
         else:
-            print(f"不采纳候选代码，保持 best average_speedup={best_speedup:.6f}", flush=True)
+            logger.warning("不采纳候选代码，保持 best average_speedup=%.6f", best_speedup)
 
-    print(f"完成。最佳代码: {out}, best average_speedup={best_speedup:.6f}", flush=True)
+    logger.info("完成。最佳代码: %s, best average_speedup=%.6f", out, best_speedup)
     return 0
 
 
