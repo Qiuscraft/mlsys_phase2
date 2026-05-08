@@ -42,19 +42,6 @@ inputs/d4608/{W.pt,X.pt,A.pt,B.pt}
 python generate_lora_inputs.py --output-root inputs --overwrite
 ```
 
-## MCP 工具
-
-启动 stdio MCP server：
-
-```bash
-python -m mlsys_phase2.mcp_server
-```
-
-提供工具：
-
-- `benchmark_lora(code, inputs_root=None, warmup=10, iters=50)`
-- `profile_lora_ncu(code, inputs_root=None, iters=8)`
-
 ## 自动优化 Agent
 
 配置 OpenAI 兼容 API。Agent 启动时会自动读取项目根目录 `.env`，且已通过 shell/export 设置的环境变量优先于 `.env`：

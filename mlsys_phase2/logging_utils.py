@@ -4,7 +4,6 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TextIO
 from zoneinfo import ZoneInfo
 
 from .utils import project_root
@@ -69,7 +68,7 @@ def _relative_pathname(pathname: str) -> str:
         return pathname
 
 
-def setup_logging(log_to_file: bool = True, console_stream: TextIO | None = None) -> Path | None:
+def setup_logging(log_to_file: bool = True) -> Path | None:
     """Configure project logging and optionally create the Agent log file."""
     logging.addLevelName(logging.WARNING, "WARN")
 
@@ -81,7 +80,7 @@ def setup_logging(log_to_file: bool = True, console_stream: TextIO | None = None
             root_logger.removeHandler(handler)
             handler.close()
 
-    console_handler = MlsysStreamHandler(console_stream or sys.stdout)
+    console_handler = MlsysStreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(ColorFormatter(LOG_FORMAT))
     root_logger.addHandler(console_handler)
