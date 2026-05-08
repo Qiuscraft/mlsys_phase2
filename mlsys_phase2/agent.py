@@ -63,6 +63,18 @@ def write_best(path: Path, code: str) -> None:
     path.write_text(code, encoding="utf-8")
 
 
+def log_tool_result(tool_name: str, result: dict[str, Any]) -> None:
+    summary: dict[str, Any] = {
+        "ok": result.get("ok"),
+        "error": result.get("error"),
+    }
+    if "average_speedup" in result:
+        summary["average_speedup"] = result.get("average_speedup")
+    if "cases" in result:
+        summary["case_count"] = len(result.get("cases") or [])
+    logger.info("返回 %s: %s", tool_name, dumps_result(summary))
+
+
 def run_agent(
     inputs_root: str | None = None,
     output_path: str | None = None,
@@ -86,7 +98,17 @@ def run_agent(
 
     for attempt in range(1, max_init_attempts + 1):
         logger.info("初始正确性/性能检查 attempt=%s/%s", attempt, max_init_attempts)
+        logger.info(
+            "进入 benchmark: phase=initial attempt=%s/%s inputs_root=%s warmup=%s iters=%s code_chars=%s",
+            attempt,
+            max_init_attempts,
+            inputs_root,
+            warmup,
+            iters,
+            len(code),
+        )
         result = benchmark_lora_code(code, inputs_root=inputs_root, warmup=warmup, iters=iters)
+        log_tool_result("benchmark", result)
         logger.info("%s", dumps_result(result))
         if result.get("ok"):
             best_result = result
@@ -102,13 +124,32 @@ def run_agent(
 
     for step in range(1, opt_iters + 1):
         logger.info("优化迭代 %s/%s: ncu profile", step, opt_iters)
+        logger.info(
+            "进入 ncu: phase=optimize step=%s/%s inputs_root=%s iters=%s code_chars=%s",
+            step,
+            opt_iters,
+            inputs_root,
+            profile_iters,
+            len(code),
+        )
         profile_result = profile_lora_code(code, inputs_root=inputs_root, iters=profile_iters)
+        log_tool_result("ncu", profile_result)
         logger.info("%s", dumps_result(profile_result))
 
         logger.info("优化迭代 %s/%s: 生成候选代码", step, opt_iters)
         candidate = call_llm(optimize_prompt(code, dumps_result(best_result), dumps_result(profile_result), best_speedup))
         logger.info("优化迭代 %s/%s: benchmark 候选代码", step, opt_iters)
+        logger.info(
+            "进入 benchmark: phase=candidate step=%s/%s inputs_root=%s warmup=%s iters=%s code_chars=%s",
+            step,
+            opt_iters,
+            inputs_root,
+            warmup,
+            iters,
+            len(candidate),
+        )
         result = benchmark_lora_code(candidate, inputs_root=inputs_root, warmup=warmup, iters=iters)
+        log_tool_result("benchmark", result)
         logger.info("%s", dumps_result(result))
 
         if candidate_is_better(result, best_speedup):
