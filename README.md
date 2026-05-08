@@ -52,7 +52,7 @@ export OPENAI_MODEL=...      # 默认 gpt-4o
 运行：
 
 ```bash
-uv run python -m mlsys_phase2.agent --inputs-root inputs --max-opt-iters 10
+mlsys-agent --inputs-root inputs --max-opt-iters 10
 ```
 
 通过正确性检查且平均 speedup 更高的代码会写入 `optimized.cu`。
