@@ -8,6 +8,14 @@ uv sync
 source ./.venv/bin/activate
 ```
 
+或
+
+```shell
+pip install -r requirements.txt
+```
+
+## 目标
+
 LoRA CUDA 自动优化 Agent。目标算子：
 
 ```text
