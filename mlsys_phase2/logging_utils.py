@@ -4,6 +4,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import TextIO
 from zoneinfo import ZoneInfo
 
 from .utils import project_root
@@ -13,7 +14,7 @@ LOG_DIR_NAME = "logs"
 CONSOLE_COLORS = {
     "INFO": "\033[34m",
     "WARN": "\033[33m",
-    "ERROR": "\033[32m",
+    "ERROR": "\033[31m",
 }
 RESET_COLOR = "\033[0m"
 
@@ -25,16 +26,24 @@ class BeijingFormatter(logging.Formatter):
         dt = datetime.fromtimestamp(record.created, tz=BEIJING_TZ)
         return f"{dt:%Y-%m-%d %H:%M:%S}.{int(record.msecs):03d}"
 
+    def format(self, record: logging.LogRecord) -> str:
+        original_pathname = record.pathname
+        record.pathname = _relative_pathname(record.pathname)
+        try:
+            return super().format(record)
+        finally:
+            record.pathname = original_pathname
+
 
 class ColorFormatter(BeijingFormatter):
-    """Console formatter with per-level ANSI colors."""
+    """Console formatter with ANSI colors only on the level name."""
 
     def format(self, record: logging.LogRecord) -> str:
         rendered = super().format(record)
         color = CONSOLE_COLORS.get(record.levelname)
         if color is None:
             return rendered
-        return f"{color}{rendered}{RESET_COLOR}"
+        return rendered.replace(record.levelname, f"{color}{record.levelname}{RESET_COLOR}", 1)
 
 
 class MlsysStreamHandler(logging.StreamHandler):
@@ -53,7 +62,14 @@ def _log_file_path() -> Path:
     return project_root() / LOG_DIR_NAME / f"{timestamp}.txt"
 
 
-def setup_logging(log_to_file: bool = True) -> Path | None:
+def _relative_pathname(pathname: str) -> str:
+    try:
+        return Path(pathname).resolve().relative_to(project_root().resolve()).as_posix()
+    except ValueError:
+        return pathname
+
+
+def setup_logging(log_to_file: bool = True, console_stream: TextIO | None = None) -> Path | None:
     """Configure project logging and optionally create the Agent log file."""
     logging.addLevelName(logging.WARNING, "WARN")
 
@@ -65,7 +81,7 @@ def setup_logging(log_to_file: bool = True) -> Path | None:
             root_logger.removeHandler(handler)
             handler.close()
 
-    console_handler = MlsysStreamHandler(sys.stdout)
+    console_handler = MlsysStreamHandler(console_stream or sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(ColorFormatter(LOG_FORMAT))
     root_logger.addHandler(console_handler)
