@@ -20,6 +20,12 @@ inputs/d4352/{W.pt,X.pt,A.pt,B.pt}
 inputs/d4608/{W.pt,X.pt,A.pt,B.pt}
 ```
 
+生成方法：
+
+```shell
+python generate_lora_inputs.py --output-root inputs --overwrite
+```
+
 ## MCP 工具
 
 启动 stdio MCP server：
