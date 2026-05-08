@@ -6,6 +6,7 @@ dependencies = [
     "mcp[cli]",
     "openai",
     "python-dotenv",
+    "tzdata",
 ]
 
 [[tool.uv.index]]
