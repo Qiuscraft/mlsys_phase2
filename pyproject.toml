@@ -1,7 +1,7 @@
 [project]
 name = "mlsys-phase2"
 version = "0.1.0"
-requires-python = "==3.10"
+requires-python = "==3.10.12"
 dependencies = [
     "torch==2.3.0",
     "mcp[cli]",
