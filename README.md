@@ -1,5 +1,13 @@
 # mlsys-phase2
 
+## 环境
+
+```shell
+uv venv
+uv sync
+source ./.venv/bin/activate
+```
+
 LoRA CUDA 自动优化 Agent。目标算子：
 
 ```text
@@ -31,7 +39,7 @@ python generate_lora_inputs.py --output-root inputs --overwrite
 启动 stdio MCP server：
 
 ```bash
-mlsys-mcp
+python -m mlsys_phase2.mcp_server
 ```
 
 提供工具：
@@ -52,7 +60,7 @@ export OPENAI_MODEL=...      # 默认 gpt-4o
 运行：
 
 ```bash
-mlsys-agent --inputs-root inputs --max-opt-iters 10
+python -m mlsys_phase2.agent --inputs-root inputs --max-opt-iters 10
 ```
 
 通过正确性检查且平均 speedup 更高的代码会写入 `optimized.cu`。
