@@ -2,3 +2,4 @@
 inputs/
 *.pyc
 .env
+logs/
