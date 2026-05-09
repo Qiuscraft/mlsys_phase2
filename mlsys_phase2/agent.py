@@ -92,9 +92,9 @@ def run_agent(
     out = Path(output_path).expanduser().resolve() if output_path else project_root() / "optimized.cu"
     opt_iters = max_opt_iters if max_opt_iters is not None else int(os.getenv("MAX_OPT_ITERS", "10"))
 
-    logger.info("生成初始 CUDA 代码...")
     logger.info("初始 CUDA System Prompt:\n%s", SYSTEM_PROMPT)
     logger.info("初始 CUDA User Prompt:\n%s", INITIAL_USER_PROMPT)
+    logger.info("生成初始 CUDA 代码...")
     code = call_llm(INITIAL_USER_PROMPT)
     best_result: dict[str, Any] | None = None
     best_speedup = 0.0
