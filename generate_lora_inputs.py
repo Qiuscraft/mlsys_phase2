@@ -7,7 +7,7 @@ import torch
 from mlsys_phase2.logging_utils import setup_logging
 
 
-D_VALUES = (3584, 3840, 4096, 4352, 4608)
+D_VALUES = (3584, 4608)
 RANK = 16
 logger = logging.getLogger(__name__)
 
