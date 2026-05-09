@@ -12,8 +12,35 @@ torch::Tensor forward(torch::Tensor W, torch::Tensor X, torch::Tensor A, torch::
 优先优化所有 d 的平均 speedup；不要依赖固定单一 d；发生不确定时选择安全正确的实现。
 """.strip()
 
-INITIAL_USER_PROMPT = """
-请生成第一版 CUDA 实现。建议先确保正确性，再做适度优化。只输出完整 .cu 代码。
+INITIAL_USER_PROMPT = f"""
+请生成第一版 optimized_lora.cu CUDA 实现，只输出完整 .cu 源码，不要输出 Markdown、解释或省略号。
+
+任务目标：实现并优化 LoRA 算子：
+Y = W X + A (B^T X)
+
+输入张量约束：
+- W: d x d，CUDA contiguous float32
+- X: d x d，CUDA contiguous float32
+- A: d x {RANK}，CUDA contiguous float32
+- B: d x {RANK}，CUDA contiguous float32
+- rank r = {RANK}
+- benchmark 覆盖 d in {list(D_VALUES)}，实现不要只针对单一 d 写死逻辑，应兼顾所有 d 的平均性能。
+
+必须暴露如下接口：
+torch::Tensor forward(torch::Tensor W, torch::Tensor X, torch::Tensor A, torch::Tensor B);
+
+编译与依赖要求：
+- 必须通过 PYBIND11_MODULE(...) 暴露 forward。
+- 单文件可编译，不依赖项目内其他文件。
+- 只使用标准 CUDA/C++ 头文件和系统已有的 PyTorch extension 头文件。
+
+正确性要求：
+- 参考实现为 torch 语义：W @ X + A @ (B.transpose(0, 1).contiguous() @ X)。
+- 必须满足 torch.allclose(Y_student, Y_ref, rtol=1e-4, atol=1e-4)。
+
+性能目标：
+- 在保证正确性的前提下优化所有 d 的平均 speedup。
+- 第一版可以优先选择稳妥正确、容易通过编译和正确性检查的实现，再做适度优化。
 """.strip()
 
 
