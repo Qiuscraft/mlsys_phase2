@@ -194,7 +194,6 @@ def _run_agent_impl(
         candidate = call_llm(
             optimize_prompt(
                 code,
-                benchmark_prompt_json(best_result),
                 profile_prompt_json(profile_result),
                 best_speedup,
             )

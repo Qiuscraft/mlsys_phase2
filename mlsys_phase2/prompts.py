@@ -186,16 +186,13 @@ benchmark 摘要：
 """.strip()
 
 
-def optimize_prompt(code: str, bench_result: str, profile_result: str, best_speedup: float) -> str:
+def optimize_prompt(code: str, profile_result: str, best_speedup: float) -> str:
     return f"""
-当前代码已正确，平均 speedup={best_speedup:.6f}。请根据 benchmark 和 ncu profile 结果优化性能，目标是提升 5 个 d 的平均 speedup。
+当前代码已正确，平均 speedup={best_speedup:.6f}。请根据 ncu profile 结果优化性能，目标是提升 5 个 d 的平均 speedup。
 只能输出完整 .cu 代码。必须保持接口和正确性要求不变。
 
 当前代码：
 {code}
-
-benchmark 摘要：
-{bench_result}
 
 ncu profile 摘要：
 {profile_result}
