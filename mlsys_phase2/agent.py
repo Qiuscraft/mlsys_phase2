@@ -88,12 +88,18 @@ def call_llm(user_prompt: str) -> str:
     if os.getenv("OPENAI_BASE_URL"):
         context["base_url"] = os.environ["OPENAI_BASE_URL"]
     logger.info("进入 httpx/_client.py:1025 前 LLM 请求上下文:\n%s", dumps_result(context))
-    resp = client.chat.completions.create(
+    stream = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
+        stream=True,
     )
-    content = resp.choices[0].message.content or ""
+    chunks: list[str] = []
+    for chunk in stream:
+        delta = chunk.choices[0].delta if chunk.choices else None
+        if delta and delta.content:
+            chunks.append(delta.content)
+    content = "".join(chunks)
     return strip_markdown_code_fence(content)
 
 
