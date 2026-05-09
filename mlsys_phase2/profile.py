@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import csv
+import io
+import re
 import tempfile
 import random
 from pathlib import Path
@@ -13,6 +16,8 @@ DEFAULT_NCU_METRICS = [
     "dram__throughput.avg.pct_of_peak_sustained_elapsed",
     "lts__throughput.avg.pct_of_peak_sustained_elapsed",
 ]
+
+MAX_NCU_KERNELS_IN_SUMMARY = 20
 
 RUNNER = r'''
 import argparse
@@ -59,6 +64,127 @@ def main():
 if __name__ == "__main__":
     main()
 '''
+
+
+def _maybe_float(value: str) -> float | None:
+    text = value.strip().strip('"').replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _looks_like_kernel_name(value: str) -> bool:
+    text = value.strip().strip('"')
+    if not text or len(text) > 500:
+        return False
+    lowered = text.lower()
+    if lowered in {"kernel name", "name", "python", "python3", "python3.10"}:
+        return False
+    return (
+        "sgemm" in lowered
+        or "gemm" in lowered
+        or "cutlass" in lowered
+        or text.startswith("void ")
+        or "::" in text
+        or "<<<" in text
+    )
+
+
+def summarize_ncu_stdout(stdout: str, selected_metrics: list[str]) -> dict[str, Any]:
+    """Return a compact ncu summary for LLM prompts.
+
+    Nsight Compute CSV formats differ across versions/pages. This parser is
+    intentionally defensive: it extracts kernel-like names from any CSV field,
+    and extracts selected metric values either from CSV header columns or from
+    rows that contain the metric name. The full raw stdout is deliberately not
+    returned, because it can be very large and can make LLM requests time out.
+    """
+    rows: list[list[str]] = []
+    try:
+        rows = [row for row in csv.reader(io.StringIO(stdout)) if row]
+    except csv.Error:
+        rows = []
+
+    kernel_counts: dict[str, int] = {}
+    metric_values: dict[str, list[float]] = {metric: [] for metric in selected_metrics}
+
+    metric_column_indexes: dict[str, list[int]] = {metric: [] for metric in selected_metrics}
+    if rows:
+        for idx, cell in enumerate(rows[0]):
+            normalized = cell.strip().strip('"')
+            for metric in selected_metrics:
+                if normalized == metric or metric in normalized:
+                    metric_column_indexes[metric].append(idx)
+
+    for row in rows:
+        for cell in row:
+            if _looks_like_kernel_name(cell):
+                name = cell.strip().strip('"')
+                kernel_counts[name] = kernel_counts.get(name, 0) + 1
+
+        for metric, indexes in metric_column_indexes.items():
+            for idx in indexes:
+                if idx < len(row):
+                    value = _maybe_float(row[idx])
+                    if value is not None:
+                        metric_values[metric].append(value)
+
+        row_text = ",".join(row)
+        for metric in selected_metrics:
+            if metric not in row_text:
+                continue
+            for idx, cell in enumerate(row):
+                if metric not in cell:
+                    continue
+                candidate_cells = row[idx + 1 : idx + 8] + row[max(0, idx - 3) : idx]
+                for candidate in candidate_cells:
+                    value = _maybe_float(candidate)
+                    if value is not None:
+                        metric_values[metric].append(value)
+                        break
+
+    # Fallback for non-CSV ncu output such as table/details pages. Avoid
+    # double-counting kernel names when CSV parsing already found them.
+    use_text_kernel_fallback = not kernel_counts
+    for line in stdout.splitlines():
+        if use_text_kernel_fallback:
+            for match in re.finditer(r"(?:void\s+)?[A-Za-z_][\w:<>~.,\s*&()]+(?:sgemm|gemm|cutlass)[\w:<>~.,\s*&()]*", line, re.IGNORECASE):
+                name = " ".join(match.group(0).split()).strip('" ,')
+                if _looks_like_kernel_name(name):
+                    kernel_counts[name] = kernel_counts.get(name, 0) + 1
+        for metric in selected_metrics:
+            if metric not in line:
+                continue
+            tail = line.split(metric, 1)[1]
+            match = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", tail)
+            if match:
+                value = _maybe_float(match.group(0))
+                if value is not None:
+                    metric_values[metric].append(value)
+
+    kernels = [
+        {"name": name, "count": count}
+        for name, count in sorted(kernel_counts.items(), key=lambda item: (-item[1], item[0]))[:MAX_NCU_KERNELS_IN_SUMMARY]
+    ]
+    metrics = {
+        metric: {
+            "count": len(values),
+            "min": min(values) if values else None,
+            "max": max(values) if values else None,
+            "avg": (sum(values) / len(values)) if values else None,
+            "values": values[:MAX_NCU_KERNELS_IN_SUMMARY],
+        }
+        for metric, values in metric_values.items()
+    }
+    return {
+        "kernel_count": sum(kernel_counts.values()),
+        "kernels": kernels,
+        "metrics": metrics,
+        "raw_stdout_chars": len(stdout),
+    }
 
 
 def profile_lora_code(
@@ -133,8 +259,8 @@ def profile_lora_code(
                         "d": case.d,
                         "ok": ok,
                         "returncode": proc.returncode,
-                        "metrics": selected_metrics,
-                        "stdout": proc.stdout[-20000:],
+                        "requested_metrics": selected_metrics,
+                        "summary": summarize_ncu_stdout(proc.stdout, selected_metrics),
                         "stderr": proc.stderr[-20000:],
                         "error": None if ok else "ncu 执行失败",
                     }
@@ -145,7 +271,8 @@ def profile_lora_code(
                         "d": case.d,
                         "ok": False,
                         "returncode": None,
-                        "metrics": selected_metrics,
+                        "requested_metrics": selected_metrics,
+                        "summary": {"kernel_count": 0, "kernels": [], "metrics": {}, "raw_stdout_chars": 0},
                         "stdout": "",
                         "stderr": "",
                         "error": str(exc),
