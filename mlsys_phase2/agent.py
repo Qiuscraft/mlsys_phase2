@@ -72,6 +72,8 @@ def log_tool_result(tool_name: str, result: dict[str, Any]) -> None:
         summary["average_speedup"] = result.get("average_speedup")
     if "cases" in result:
         summary["case_count"] = len(result.get("cases") or [])
+    if "sampled_d" in result:
+        summary["sampled_d"] = result.get("sampled_d")
     log_fn = logger.info if result.get("ok") else logger.error
     log_fn("返回 %s: %s", tool_name, dumps_result(summary))
 

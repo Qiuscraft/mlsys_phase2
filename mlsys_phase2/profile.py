@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 import tempfile
+import random
 from pathlib import Path
 from typing import Any
 
-from .utils import discover_cases, require_executable, run_command, validate_case_dirs
+from .utils import discover_cases, require_executable, run_command
 
 DEFAULT_NCU_METRICS = [
-    "sm__throughput.avg.pct_of_peak_sustained_elapsed",
     "gpu__time_duration.sum",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed",
     "dram__throughput.avg.pct_of_peak_sustained_elapsed",
     "lts__throughput.avg.pct_of_peak_sustained_elapsed",
-    "smsp__sass_thread_inst_executed_op_fadd_pred_on.sum",
-    "smsp__sass_thread_inst_executed_op_fmul_pred_on.sum",
-    "smsp__sass_thread_inst_executed_op_ffma_pred_on.sum",
-    "sm__warps_active.avg.pct_of_peak_sustained_active",
 ]
 
 RUNNER = r'''
@@ -72,7 +69,15 @@ def profile_lora_code(
     timeout: int = 300,
 ) -> dict[str, Any]:
     cases = discover_cases(inputs_root)
-    missing = validate_case_dirs(inputs_root)
+    if cases:
+        cases = [random.choice(cases)]
+
+    missing: list[str] = []
+    for case in cases:
+        for name in ("W.pt", "X.pt", "A.pt", "B.pt"):
+            p = case.base_dir / name
+            if not p.exists():
+                missing.append(str(p))
     if missing:
         return {
             "ok": False,
@@ -148,4 +153,9 @@ def profile_lora_code(
                 )
 
     ok = all(r["ok"] for r in results)
-    return {"ok": ok, "cases": results, "error": None if ok else "存在失败的 ncu profile case"}
+    return {
+        "ok": ok,
+        "cases": results,
+        "sampled_d": results[0]["d"] if results else None,
+        "error": None if ok else "存在失败的 ncu profile case",
+    }
