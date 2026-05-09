@@ -67,14 +67,24 @@ def _openai_client():
 
 def call_llm(user_prompt: str) -> str:
     model = os.getenv("OPENAI_MODEL", "gpt-4o")
+    temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
     client = _openai_client()
+    context: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if os.getenv("OPENAI_BASE_URL"):
+        context["base_url"] = os.environ["OPENAI_BASE_URL"]
+    logger.info("进入 httpx/_client.py:1025 前 LLM 请求上下文:\n%s", dumps_result(context))
     resp = client.chat.completions.create(
         model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=float(os.getenv("OPENAI_TEMPERATURE", "0.2")),
+        messages=messages,
+        temperature=temperature,
     )
     content = resp.choices[0].message.content or ""
     return strip_markdown_code_fence(content)
@@ -120,8 +130,6 @@ def _run_agent_impl(
     out = Path(output_path).expanduser().resolve() if output_path else project_root() / "optimized.cu"
     opt_iters = max_opt_iters if max_opt_iters is not None else int(os.getenv("MAX_OPT_ITERS", "10"))
 
-    logger.info("初始 CUDA System Prompt:\n%s", SYSTEM_PROMPT)
-    logger.info("初始 CUDA User Prompt:\n%s", INITIAL_USER_PROMPT)
     logger.info("生成初始 CUDA 代码...")
     code = call_llm(INITIAL_USER_PROMPT)
     best_result: dict[str, Any] | None = None
