@@ -3,3 +3,4 @@ inputs/
 *.pyc
 .env
 logs/
+AGENTS.md

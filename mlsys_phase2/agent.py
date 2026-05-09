@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,31 @@ from .utils import dumps_result, project_root, strip_markdown_code_fence
 
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_AGENT_TIMEOUT_SECONDS = 30 * 60
+AGENT_TIMEOUT_EXIT_CODE = 124
+
+
+def _force_exit_after_timeout(seconds: float) -> None:
+    minutes = seconds / 60.0
+    message = f"\nAgent运行超过限时 {minutes:g} 分钟，直接退出程序。\n"
+    try:
+        logger.error("Agent运行超过限时 %.2f 分钟，直接退出程序。", minutes)
+    except Exception:
+        pass
+    try:
+        os.write(2, message.encode("utf-8", errors="replace"))
+    finally:
+        os._exit(AGENT_TIMEOUT_EXIT_CODE)
+
+
+def _start_agent_timeout_timer(seconds: float | int | None) -> threading.Timer | None:
+    if seconds is None or float(seconds) <= 0:
+        return None
+    timer = threading.Timer(float(seconds), _force_exit_after_timeout, args=(float(seconds),))
+    timer.daemon = True
+    timer.start()
+    return timer
 
 
 def load_env() -> None:
@@ -78,7 +104,7 @@ def log_tool_result(tool_name: str, result: dict[str, Any]) -> None:
     log_fn("返回 %s: %s", tool_name, dumps_result(summary))
 
 
-def run_agent(
+def _run_agent_impl(
     inputs_root: str | None = None,
     output_path: str | None = None,
     max_init_attempts: int = 8,
@@ -173,6 +199,32 @@ def run_agent(
     return 0
 
 
+def run_agent(
+    inputs_root: str | None = None,
+    output_path: str | None = None,
+    max_init_attempts: int = 8,
+    max_opt_iters: int | None = None,
+    warmup: int = 10,
+    iters: int = 50,
+    profile_iters: int = 8,
+    time_limit_seconds: float | int | None = DEFAULT_AGENT_TIMEOUT_SECONDS,
+) -> int:
+    timer = _start_agent_timeout_timer(time_limit_seconds)
+    try:
+        return _run_agent_impl(
+            inputs_root=inputs_root,
+            output_path=output_path,
+            max_init_attempts=max_init_attempts,
+            max_opt_iters=max_opt_iters,
+            warmup=warmup,
+            iters=iters,
+            profile_iters=profile_iters,
+        )
+    finally:
+        if timer is not None:
+            timer.cancel()
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the LoRA CUDA auto-optimization agent.")
     parser.add_argument("--inputs-root", default=None, help="默认使用项目根目录 inputs/")
@@ -182,6 +234,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--iters", type=int, default=50)
     parser.add_argument("--profile-iters", type=int, default=8)
+    parser.add_argument("--time-limit-seconds", type=float, default=DEFAULT_AGENT_TIMEOUT_SECONDS, help="Agent 总运行限时；默认 1800 秒，<=0 表示不限时")
     return parser.parse_args(argv)
 
 
@@ -196,6 +249,7 @@ def main(argv: list[str] | None = None) -> None:
             warmup=args.warmup,
             iters=args.iters,
             profile_iters=args.profile_iters,
+            time_limit_seconds=args.time_limit_seconds,
         )
     )
 
