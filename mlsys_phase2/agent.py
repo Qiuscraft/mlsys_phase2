@@ -73,8 +73,12 @@ def _openai_client():
 
 
 def call_llm(user_prompt: str) -> str:
+    import httpx
+    import time
+
     model = os.getenv("OPENAI_MODEL", "gpt-4o")
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
+    max_retries = int(os.getenv("LLM_MAX_RETRIES", "3"))
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
@@ -88,19 +92,29 @@ def call_llm(user_prompt: str) -> str:
     if os.getenv("OPENAI_BASE_URL"):
         context["base_url"] = os.environ["OPENAI_BASE_URL"]
     logger.info("进入 httpx/_client.py:1025 前 LLM 请求上下文:\n%s", dumps_result(context))
-    stream = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        stream=True,
-    )
-    chunks: list[str] = []
-    for chunk in stream:
-        delta = chunk.choices[0].delta if chunk.choices else None
-        if delta and delta.content:
-            chunks.append(delta.content)
-    content = "".join(chunks)
-    return strip_markdown_code_fence(content)
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            stream = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+            )
+            chunks: list[str] = []
+            for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    chunks.append(delta.content)
+            content = "".join(chunks)
+            return strip_markdown_code_fence(content)
+        except httpx.RemoteProtocolError as e:
+            logger.warning("LLM 流式请求被远端断开 (attempt %d/%d): %s", attempt, max_retries, e)
+            if attempt >= max_retries:
+                raise
+            time.sleep(2 * attempt)
+
+    raise RuntimeError("call_llm: 不应到达此处")
 
 
 def candidate_is_better(result: dict[str, Any], best_speedup: float) -> bool:

@@ -75,6 +75,7 @@ OPENAI_API_KEY        OpenAI 兼容 API Key
 OPENAI_BASE_URL       OpenAI 兼容 API Base URL，可选
 OPENAI_MODEL          使用的模型，默认 gpt-4o
 OPENAI_TEMPERATURE    采样温度，默认 0.2
+LLM_MAX_RETRIES       LLM 流式请求遇到远端断连时的最大重试次数，默认 3
 MAX_OPT_ITERS         优化迭代次数；仅在未传 --max-opt-iters 时生效，默认 10
 ```
 
