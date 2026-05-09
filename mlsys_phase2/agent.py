@@ -10,7 +10,14 @@ from typing import Any
 from .bench import benchmark_lora_code
 from .logging_utils import setup_logging
 from .profile import profile_lora_code
-from .prompts import INITIAL_USER_PROMPT, SYSTEM_PROMPT, optimize_prompt, repair_prompt
+from .prompts import (
+    INITIAL_USER_PROMPT,
+    SYSTEM_PROMPT,
+    benchmark_prompt_json,
+    optimize_prompt,
+    profile_prompt_json,
+    repair_prompt,
+)
 from .utils import dumps_result, project_root, strip_markdown_code_fence
 
 
@@ -156,7 +163,7 @@ def _run_agent_impl(
             write_best(out, code)
             logger.info("初始代码已采纳: %s, average_speedup=%.6f", out, best_speedup)
             break
-        code = call_llm(repair_prompt(code, dumps_result(result)))
+        code = call_llm(repair_prompt(code, benchmark_prompt_json(result)))
 
     if best_result is None:
         logger.error("无法生成通过正确性检查的初始代码。")
@@ -178,7 +185,14 @@ def _run_agent_impl(
         logger.info("%s", dumps_result(profile_result))
 
         logger.info("优化迭代 %s/%s: 生成候选代码", step, opt_iters)
-        candidate = call_llm(optimize_prompt(code, dumps_result(best_result), dumps_result(profile_result), best_speedup))
+        candidate = call_llm(
+            optimize_prompt(
+                code,
+                benchmark_prompt_json(best_result),
+                profile_prompt_json(profile_result),
+                best_speedup,
+            )
+        )
         logger.info("优化迭代 %s/%s: benchmark 候选代码", step, opt_iters)
         logger.info(
             "进入 benchmark: phase=candidate step=%s/%s inputs_root=%s warmup=%s iters=%s code_chars=%s\n%s",

@@ -110,3 +110,32 @@ Agent 默认最多运行 30 分钟。超过 `--time-limit-seconds` 后会直接�
 ncu profile 每次会从输入目录中随机抽取 1 个 d 进行采集，并在日志摘要中输出 `sampled_d`。
 
 通过正确性检查且平均 speedup 更高的代码会写入 `optimized.cu`。
+
+## 手动执行单元测试
+
+项目的轻量单元测试使用 Python 标准库 `unittest`，不依赖 `pytest`。
+
+从项目根目录执行全部测试：
+
+```bash
+python -m unittest discover -s tests
+```
+
+执行单个测试文件：
+
+```bash
+python -m unittest tests.test_prompt_summaries
+```
+
+执行单个测试类或测试方法：
+
+```bash
+python -m unittest tests.test_prompt_summaries.PromptSummaryTests
+python -m unittest tests.test_prompt_summaries.PromptSummaryTests.test_profile_prompt_json_keeps_only_compact_fields
+```
+
+如果默认 `python -m unittest discover` 没有发现测试，请显式指定测试目录：
+
+```bash
+python -m unittest discover -s tests -p "test*.py"
+```

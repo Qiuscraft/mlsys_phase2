@@ -93,6 +93,20 @@ def _looks_like_kernel_name(value: str) -> bool:
     )
 
 
+def _summarize_metric_values(values: list[float]) -> dict[str, Any] | None:
+    if not values:
+        return None
+    if all(value == 0.0 for value in values):
+        return None
+    return {
+        "count": len(values),
+        "min": min(values),
+        "max": max(values),
+        "avg": sum(values) / len(values),
+        "values": values[:MAX_NCU_KERNELS_IN_SUMMARY],
+    }
+
+
 def summarize_ncu_stdout(stdout: str, selected_metrics: list[str]) -> dict[str, Any]:
     """Return a compact ncu summary for LLM prompts.
 
@@ -169,16 +183,11 @@ def summarize_ncu_stdout(stdout: str, selected_metrics: list[str]) -> dict[str, 
         {"name": name, "count": count}
         for name, count in sorted(kernel_counts.items(), key=lambda item: (-item[1], item[0]))[:MAX_NCU_KERNELS_IN_SUMMARY]
     ]
-    metrics = {
-        metric: {
-            "count": len(values),
-            "min": min(values) if values else None,
-            "max": max(values) if values else None,
-            "avg": (sum(values) / len(values)) if values else None,
-            "values": values[:MAX_NCU_KERNELS_IN_SUMMARY],
-        }
-        for metric, values in metric_values.items()
-    }
+    metrics: dict[str, Any] = {}
+    for metric, values in metric_values.items():
+        summary = _summarize_metric_values(values)
+        if summary is not None:
+            metrics[metric] = summary
     return {
         "kernel_count": sum(kernel_counts.values()),
         "kernels": kernels,
