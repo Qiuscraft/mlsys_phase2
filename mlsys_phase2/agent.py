@@ -4,6 +4,8 @@ import argparse
 import logging
 import os
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -26,11 +28,36 @@ logger = logging.getLogger(__name__)
 DEFAULT_AGENT_TIMEOUT_SECONDS = 30 * 60
 AGENT_TIMEOUT_EXIT_CODE = 124
 
+_phase_times: dict[str, float] = {"benchmark": 0.0, "ncu": 0.0, "llm": 0.0}
+_phase_lock = threading.Lock()
+
+
+@contextmanager
+def _track_time(phase: str):
+    start = time.time()
+    try:
+        yield
+    finally:
+        elapsed = time.time() - start
+        with _phase_lock:
+            _phase_times[phase] += elapsed
+
+
+def _log_phase_times() -> None:
+    with _phase_lock:
+        times = dict(_phase_times)
+    total = sum(times.values())
+    logger.info(
+        "阶段耗时汇总: benchmark=%.2fs, ncu=%.2fs, llm=%.2fs, total=%.2fs",
+        times["benchmark"], times["ncu"], times["llm"], total,
+    )
+
 
 def _force_exit_after_timeout(seconds: float) -> None:
     minutes = seconds / 60.0
     message = f"\nAgent运行超过限时 {minutes:g} 分钟，直接退出程序。\n"
     try:
+        _log_phase_times()
         logger.error("Agent运行超过限时 %.2f 分钟，直接退出程序。", minutes)
     except Exception:
         pass
@@ -74,7 +101,6 @@ def _openai_client():
 
 def call_llm(user_prompt: str) -> str:
     import httpx
-    import time
 
     model = os.getenv("OPENAI_MODEL", "gpt-4o")
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
@@ -158,7 +184,8 @@ def _run_agent_impl(
     opt_iters = max_opt_iters if max_opt_iters is not None else int(os.getenv("MAX_OPT_ITERS", "10"))
 
     logger.info("生成初始 CUDA 代码...")
-    code = call_llm(INITIAL_USER_PROMPT)
+    with _track_time("llm"):
+        code = call_llm(INITIAL_USER_PROMPT)
     best_result: dict[str, Any] | None = None
     best_speedup = 0.0
 
@@ -174,7 +201,8 @@ def _run_agent_impl(
             len(code),
             code,
         )
-        result = benchmark_lora_code(code, inputs_root=inputs_root, warmup=warmup, iters=iters)
+        with _track_time("benchmark"):
+            result = benchmark_lora_code(code, inputs_root=inputs_root, warmup=warmup, iters=iters)
         log_tool_result("benchmark", result)
         logger.info("%s", dumps_result(result))
         if result.get("ok"):
@@ -183,10 +211,12 @@ def _run_agent_impl(
             write_best(out, code)
             logger.info("初始代码已采纳: %s, average_speedup=%.6f", out, best_speedup)
             break
-        code = call_llm(repair_prompt(code, benchmark_prompt_json(result)))
+        with _track_time("llm"):
+            code = call_llm(repair_prompt(code, benchmark_prompt_json(result)))
 
     if best_result is None:
         logger.error("无法生成通过正确性检查的初始代码。")
+        _log_phase_times()
         return 1
 
     for step in range(1, opt_iters + 1):
@@ -200,18 +230,20 @@ def _run_agent_impl(
             len(code),
             code,
         )
-        profile_result = profile_lora_code(code, inputs_root=inputs_root, iters=profile_iters)
+        with _track_time("ncu"):
+            profile_result = profile_lora_code(code, inputs_root=inputs_root, iters=profile_iters)
         log_tool_result("ncu", profile_result)
         logger.info("%s", dumps_result(profile_result))
 
         logger.info("优化迭代 %s/%s: 生成候选代码", step, opt_iters)
-        candidate = call_llm(
-            optimize_prompt(
-                code,
-                profile_prompt_json(profile_result),
-                best_speedup,
+        with _track_time("llm"):
+            candidate = call_llm(
+                optimize_prompt(
+                    code,
+                    profile_prompt_json(profile_result),
+                    best_speedup,
+                )
             )
-        )
         logger.info("优化迭代 %s/%s: benchmark 候选代码", step, opt_iters)
         logger.info(
             "进入 benchmark: phase=candidate step=%s/%s inputs_root=%s warmup=%s iters=%s code_chars=%s\n%s",
@@ -223,7 +255,8 @@ def _run_agent_impl(
             len(candidate),
             candidate,
         )
-        result = benchmark_lora_code(candidate, inputs_root=inputs_root, warmup=warmup, iters=iters)
+        with _track_time("benchmark"):
+            result = benchmark_lora_code(candidate, inputs_root=inputs_root, warmup=warmup, iters=iters)
         log_tool_result("benchmark", result)
         logger.info("%s", dumps_result(result))
 
@@ -237,6 +270,7 @@ def _run_agent_impl(
             logger.warning("不采纳候选代码，保持 best average_speedup=%.6f", best_speedup)
 
     logger.info("完成。最佳代码: %s, best average_speedup=%.6f", out, best_speedup)
+    _log_phase_times()
     return 0
 
 
